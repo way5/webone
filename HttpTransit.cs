@@ -141,6 +141,21 @@ namespace WebOne
 							SendError(400, "Invalid request. Correct format is <pre>CONNECT example.com:443 HTTP/1.1</pre>");
 							return;
 						}
+
+						//check for pass-through mode
+						if (CheckStringRegExp(ConfigFile.ConnectPassThrough.ToArray(), ClientRequest.RawUrl))
+						{
+							new HttpSecurePassthroughServer(ClientRequest, ClientResponse, Log).Accept();
+							return;
+						}
+
+						//check for SSL full decrypt mode
+						if (ConfigFile.NonHttpSslDecrypt.ContainsKey(ClientRequest.RawUrl))
+						{
+							new HttpSecureNonHttpDecryptServer(ClientRequest, ClientResponse, ConfigFile.NonHttpSslDecrypt[ClientRequest.RawUrl], Log).Accept();
+							return;
+						}
+
 						//work as HTTPS proxy
 						if (ClientRequest.RawUrl.EndsWith(":443"))
 						{
@@ -493,7 +508,13 @@ namespace WebOne
 									case "AddHeader":
 										string Header = ProcessUriMasks(Edit.Value);
 										Dump("~Add request header: " + Header);
-										if (whc[Edit.Value.Substring(0, Edit.Value.IndexOf(": "))] == null) whc.Add(Header);
+										if (whc[Edit.Value.Substring(0, Edit.Value.IndexOf(": "))] == null)
+										{ whc.Add(Header); }
+										else
+										{
+											whc.Remove(Edit.Value.Substring(0, Edit.Value.IndexOf(": ")));
+											whc.Add(Header);
+										}
 										break;
 									case "AddRequestHeaderFindReplace":
 										FindReplaceEditSetRule hdr_rule = (FindReplaceEditSetRule)Edit;
@@ -540,7 +561,7 @@ namespace WebOne
 					operation.Method = ClientRequest.HttpMethod;
 					operation.RequestHeaders = whc;
 					operation.URL = RequestURL;
-					if(!ConfigFile.DontPreferHTTPS) operation.SecureConnection = ClientRequest.IsSecureConnection;
+					if (!ConfigFile.DontPreferHTTPS) operation.SecureConnection = ClientRequest.IsSecureConnection;
 					SendRequest(operation);
 				}
 				catch (System.Net.Http.HttpRequestException httpex)
@@ -1163,6 +1184,10 @@ namespace WebOne
 					case "/!ftp/":
 						// FTP client
 						SendInfoPage(new FtpClientGUI(ClientRequest).GetPage());
+						return;
+					case "/!redirect":
+					case "/!redirect/":
+						SendInfoPage(new RedirectorInfoPage(HttpUtility.ParseQueryString(ClientRequest.Url.Query)));
 						return;
 					case "/!ca":
 					case "/!ca/":
